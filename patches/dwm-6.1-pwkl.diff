@@ -1,0 +1,53 @@
+diff -up a/dwm.c b/dwm.c
+--- a/dwm.c	2015-11-11 17:11:54.408749261 +0300
++++ b/dwm.c	2015-11-11 17:19:33.036742190 +0300
+@@ -36,6 +36,7 @@
+ #include <X11/Xlib.h>
+ #include <X11/Xproto.h>
+ #include <X11/Xutil.h>
++#include <X11/XKBlib.h>
+ #ifdef XINERAMA
+ #include <X11/extensions/Xinerama.h>
+ #endif /* XINERAMA */
+@@ -97,6 +98,7 @@ struct Client {
+ 	Client *snext;
+ 	Monitor *mon;
+ 	Window win;
++	unsigned char kbdgrp;
+ };
+ 
+ typedef struct {
+@@ -869,6 +871,7 @@ focus(Client *c)
+ 			selmon = c->mon;
+ 		if (c->isurgent)
+ 			clearurgent(c);
++		XkbLockGroup (dpy, XkbUseCoreKbd, c->kbdgrp);
+ 		detachstack(c);
+ 		attachstack(c);
+ 		grabbuttons(c, 1);
+@@ -1165,6 +1168,7 @@ manage(Window w, XWindowAttributes *wa)
+ 	c->mon->sel = c;
+ 	arrange(c->mon);
+ 	XMapWindow(dpy, c->win);
++	c->kbdgrp = 0;
+ 	focus(NULL);
+ }
+ 
+@@ -1902,6 +1906,8 @@ toggleview(const Arg *arg)
+ void
+ unfocus(Client *c, int setfocus)
+ {
++	XkbStateRec kbd_state;
++
+ 	if (!c)
+ 		return;
+ 	grabbuttons(c, 0);
+@@ -1910,6 +1916,8 @@ unfocus(Client *c, int setfocus)
+ 		XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
+ 		XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
+ 	}
++	XkbGetState (dpy, XkbUseCoreKbd, &kbd_state);
++	c->kbdgrp = kbd_state.group;
+ }
+ 
+ void

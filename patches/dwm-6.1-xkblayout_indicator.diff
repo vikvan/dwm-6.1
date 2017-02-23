@@ -1,0 +1,190 @@
+diff -up a/config.def.h b/config.def.h
+--- a/config.def.h	2015-11-11 18:17:46.084688335 +0300
++++ b/config.def.h	2015-11-11 19:01:40.992647710 +0300
+@@ -112,5 +112,6 @@ static Button buttons[] = {
+ 	{ ClkTagBar,            0,              Button3,        toggleview,     {0} },
+ 	{ ClkTagBar,            MODKEY,         Button1,        tag,            {0} },
+ 	{ ClkTagBar,            MODKEY,         Button3,        toggletag,      {0} },
++    { ClkKbLayout,          0,              Button1,        nextkbgrp,      {0} },
+ };
+ 
+diff -up a/dwm.c b/dwm.c
+--- a/dwm.c	2015-11-11 18:17:46.084688335 +0300
++++ b/dwm.c	2015-11-11 19:01:33.412647827 +0300
+@@ -41,6 +41,8 @@
+ #include <X11/extensions/Xinerama.h>
+ #endif /* XINERAMA */
+ #include <X11/Xft/Xft.h>
++#include <X11/extensions/XKBrules.h>
++#include <X11/extensions/XKB.h>
+ 
+ #include "drw.h"
+ #include "util.h"
+@@ -66,7 +68,7 @@ enum { NetSupported, NetWMName, NetWMSta
+        NetWMWindowTypeDialog, NetClientList, NetLast }; /* EWMH atoms */
+ enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
+ enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
+-       ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
++       ClkClientWin, ClkRootWin, ClkKbLayout, ClkLast }; /* clicks */
+ 
+ typedef union {
+ 	int i;
+@@ -182,6 +184,8 @@ static int gettextprop(Window w, Atom at
+ static void grabbuttons(Client *c, int focused);
+ static void grabkeys(void);
+ static void incnmaster(const Arg *arg);
++static int initxkb(Display* dpy);
++static const char* kbgrpname(unsigned char grp);
+ static void keypress(XEvent *e);
+ static void killclient(const Arg *arg);
+ static void manage(Window w, XWindowAttributes *wa);
+@@ -190,6 +194,7 @@ static void maprequest(XEvent *e);
+ static void monocle(Monitor *m);
+ static void motionnotify(XEvent *e);
+ static void movemouse(const Arg *arg);
++static void nextkbgrp(const Arg* arg);
+ static Client *nexttiled(Client *c);
+ static void pop(Client *);
+ static Client *prevtiled(Client *c);
+@@ -241,14 +246,24 @@ static Monitor *wintomon(Window w);
+ static int xerror(Display *dpy, XErrorEvent *ee);
+ static int xerrordummy(Display *dpy, XErrorEvent *ee);
+ static int xerrorstart(Display *dpy, XErrorEvent *ee);
++static void xkbstatenotify(XkbEvent*);
+ static void zoom(const Arg *arg);
+ 
+ /* variables */
++static const char* default_kb_layout_name = " ";
++static const char* kb_layout_names[XkbNumKbdGroups] = {0};
++static unsigned char nkbgrp = 0;
++static unsigned char kbgrp = 0;
++static int xkb_base_evt = 0;
++static const unsigned long int xkbeventmask = XkbStateNotifyMask;
++static void (*xkbhandler[LASTEvent]) (XkbEvent*) = {
++    [XkbStateNotify] = xkbstatenotify
++};
+ static const char broken[] = "broken";
+ static char stext[256];
+ static int screen;
+ static int sw, sh;           /* X display screen geometry width, height */
+-static int bh, blw = 0;      /* bar geometry */
++static int bh, blw, bkw = 0;      /* bar geometry */
+ static int (*xerrorxlib)(Display *, XErrorEvent *);
+ static unsigned int numlockmask = 0;
+ static void (*handler[LASTEvent]) (XEvent *) = {
+@@ -487,6 +502,8 @@ buttonpress(XEvent *e)
+ 			arg.ui = 1 << i;
+ 		} else if (ev->x < x + blw)
+ 			click = ClkLtSymbol;
++		else if(ev->x < x + blw + bkw)
++			click = ClkKbLayout;
+ 		else if (ev->x > selmon->ww - TEXTW(stext))
+ 			click = ClkStatusText;
+ 		else
+@@ -796,6 +813,12 @@ drawbar(Monitor *m)
+ 	drw_setscheme(drw, &scheme[SchemeNorm]);
+ 	drw_text(drw, x, 0, w, bh, m->ltsymbol, 0);
+ 	x += w;
++
++    w = bkw = TEXTW(kbgrpname(kbgrp));
++	drw_setscheme(drw, &scheme[SchemeNorm]);
++	drw_text(drw, x, 0, w, bh, kbgrpname(kbgrp), 0);
++    x += w;
++
+ 	xx = x;
+ 	if (m == selmon) { /* status is only drawn on selected monitor */
+ 		w = TEXTW(stext);
+@@ -1066,6 +1089,41 @@ isuniquegeom(XineramaScreenInfo *unique,
+ }
+ #endif /* XINERAMA */
+ 
++int
++initxkb(Display* dpy) {
++    int xkb_major = XkbMajorVersion;
++    int xkb_minor = XkbMajorVersion;
++    int rvalue = 0;
++
++    if(XkbLibraryVersion(&xkb_major, &xkb_minor))
++        if(XkbQueryExtension(dpy, 0, &xkb_base_evt, 0,
++                    &xkb_major, &xkb_minor))
++            if(XkbSelectEvents(dpy, XkbUseCoreKbd,
++                        xkbeventmask, xkbeventmask)) {
++
++                rvalue = 1;
++                // get kb layout names
++                XkbRF_VarDefsRec vd;
++                if (XkbRF_GetNamesProp(dpy, 0, &vd)) {
++                    char* saveptr = 0;
++                    const char* delim = ",";
++                    const char* layout;
++                    while((layout = strtok_r(saveptr ? 0 : vd.layout, delim, &saveptr)) != 0 &&
++                            nkbgrp < XkbNumKbdGroups)
++                        kb_layout_names[nkbgrp++] = strdup(layout);
++                }
++        }
++    return rvalue;
++}
++
++const char*
++kbgrpname(unsigned char grp) {
++    return
++        (grp > XkbNumKbdGroups || !kb_layout_names[grp]) ?
++        default_kb_layout_name :
++        kb_layout_names[grp];
++}
++
+ void
+ keypress(XEvent *e)
+ {
+@@ -1296,6 +1354,12 @@ movemouse(const Arg *arg)
+ 	}
+ }
+ 
++void
++nextkbgrp(const Arg* arg) {
++    unsigned char next = kbgrp + 1;
++    XkbLockGroup(dpy, XkbUseCoreKbd, next == nkbgrp ? 0 : next);
++}
++
+ Client *
+ nexttiled(Client *c)
+ {
+@@ -1580,7 +1644,12 @@ run(void)
+ 	/* main event loop */
+ 	XSync(dpy, False);
+ 	while (running && !XNextEvent(dpy, &ev))
+-		if (handler[ev.type])
++        if (ev.type == xkb_base_evt) {
++            XkbEvent* xkbe = (XkbEvent*)&ev;
++            if (xkbhandler[xkbe->any.xkb_type])
++                xkbhandler[xkbe->any.xkb_type](xkbe);
++        }
++        else if (handler[ev.type])
+ 			handler[ev.type](&ev); /* call handler */
+ }
+ 
+@@ -2351,6 +2420,15 @@ xerrorstart(Display *dpy, XErrorEvent *e
+ }
+ 
+ void
++xkbstatenotify(XkbEvent* xkbe) {
++    unsigned char group = xkbe->state.group;
++    if (kbgrp != group) {
++        kbgrp = group;
++        drawbars();
++    }
++}
++
++void
+ zoom(const Arg *arg)
+ {
+ 	Client *c = selmon->sel;
+@@ -2375,6 +2453,8 @@ main(int argc, char *argv[])
+ 		fputs("warning: no locale support\n", stderr);
+ 	if (!(dpy = XOpenDisplay(NULL)))
+ 		die("dwm: cannot open display\n");
++    if(!initxkb(dpy))
++        die("dwm: cannot init xkb extension\n");
+ 	checkotherwm();
+ 	setup();
+ 	scan();

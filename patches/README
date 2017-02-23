@@ -1,0 +1,15 @@
+Some patches had been applied to a vanilla version of dwm-6.1 before an initial commit.
+The patches are listed in an application order:
+- dwm-6.1-better_borders.diff
+- dwm-6.1-pertag.diff
+- dwm-6.1-push.diff
+- dwm-6.1-pwkl.diff
+- dwm-6.1-resize_corners.diff
+- dwm-6.1-save_floats.diff
+- dwm-6.1-useless_gap.diff
+- dwm-6.1-xkblayout_indicator.diff
+- dwm-6.1-column_master.diff
+- dwm-6.1-deck.diff
+- dwm-6.1-autostart.diff
+- dwm-6.1-configmk.diff
+- dwm-6.1-myconfig.diff

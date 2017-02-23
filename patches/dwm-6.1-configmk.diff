@@ -1,0 +1,28 @@
+diff -up a/config.mk b/config.mk
+--- a/config.mk	2015-11-09 01:39:37.000000000 +0300
++++ b/config.mk	2015-11-12 20:19:19.845087931 +0300
+@@ -7,8 +7,8 @@ VERSION = 6.1
+ PREFIX = /usr/local
+ MANPREFIX = ${PREFIX}/share/man
+ 
+-X11INC = /usr/X11R6/include
+-X11LIB = /usr/X11R6/lib
++X11INC = /usr/include/X11
++X11LIB = /usr/lib/X11
+ 
+ # Xinerama, comment if you don't want it
+ XINERAMALIBS  = -lXinerama
+@@ -18,11 +18,11 @@ XINERAMAFLAGS = -DXINERAMA
+ FREETYPELIBS = -lfontconfig -lXft
+ FREETYPEINC = /usr/include/freetype2
+ # OpenBSD (uncomment)
+-FREETYPEINC = ${X11INC}/freetype2
++#FREETYPEINC = ${X11INC}/freetype2
+ 
+ # includes and libs
+ INCS = -I${X11INC} -I${FREETYPEINC}
+-LIBS = -L${X11LIB} -lX11 ${XINERAMALIBS} ${FREETYPELIBS}
++LIBS = -L${X11LIB} -lX11 -lxkbfile ${XINERAMALIBS} ${FREETYPELIBS}
+ 
+ # flags
+ CPPFLAGS = -D_BSD_SOURCE -D_POSIX_C_SOURCE=2 -DVERSION=\"${VERSION}\" ${XINERAMAFLAGS}
